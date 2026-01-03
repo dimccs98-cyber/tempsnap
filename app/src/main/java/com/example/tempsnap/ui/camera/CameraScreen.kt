@@ -431,33 +431,33 @@ private fun BottomControls(
     ) {
         // 模式切换栏
         Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.padding(bottom = 24.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(if (!isVideoMode) BrandSurface else Color.Transparent)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (!isVideoMode) Color.White.copy(alpha = 0.2f) else Color.Transparent)
                     .clickable { onModeChange(false) }
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
                     text = "Photo",
-                    color = if (!isVideoMode) BrandPrimary else Color.White,
+                    color = if (!isVideoMode) BrandPrimary else Color.White.copy(alpha = 0.6f),
                     fontSize = 15.sp,
                     fontWeight = if (!isVideoMode) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
                 )
             }
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(if (isVideoMode) BrandSurface else Color.Transparent)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (isVideoMode) Color.White.copy(alpha = 0.2f) else Color.Transparent)
                     .clickable { onModeChange(true) }
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
                     text = "Video",
-                    color = if (isVideoMode) BrandPrimary else Color.White,
+                    color = if (isVideoMode) BrandPrimary else Color.White.copy(alpha = 0.6f),
                     fontSize = 15.sp,
                     fontWeight = if (isVideoMode) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
                 )
