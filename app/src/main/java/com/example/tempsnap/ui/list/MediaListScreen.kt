@@ -29,6 +29,8 @@ import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import com.example.tempsnap.data.MediaItem
 import com.example.tempsnap.data.SettingsDataStore
+import com.example.tempsnap.ui.theme.BrandPrimary
+import com.example.tempsnap.ui.theme.BrandSelected
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,7 +77,7 @@ fun MediaListScreen(
                     Button(
                         onClick = { viewModel.keepSelectedItems() },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
+                            containerColor = BrandPrimary
                         )
                     ) {
                         Icon(Icons.Default.Save, null, Modifier.size(18.dp))
@@ -151,7 +153,7 @@ private fun MediaItemCard(
             .clip(RoundedCornerShape(4.dp))
             .background(Color.DarkGray)
             .then(
-                if (isSelected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
+                if (isSelected) Modifier.border(3.dp, BrandPrimary, RoundedCornerShape(4.dp))
                 else Modifier
             )
             .clickable(onClick = onClick)
@@ -219,7 +221,7 @@ private fun MediaItemCard(
                     .align(Alignment.TopEnd)
                     .padding(4.dp)
                     .size(24.dp)
-                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)),
+                    .background(BrandPrimary, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -274,7 +276,7 @@ private fun SettingsBottomSheet(
                         onClick = { onRetentionDaysChange(days) },
                         label = { Text("${days}天") },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary
+                            selectedContainerColor = BrandSelected
                         )
                     )
                 }
@@ -297,7 +299,7 @@ private fun SettingsBottomSheet(
                     onClick = { onVideoQualityChange(SettingsDataStore.QUALITY_720P) },
                     label = { Text("720P (省空间)") },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary
+                        selectedContainerColor = BrandSelected
                     )
                 )
                 FilterChip(
@@ -305,7 +307,7 @@ private fun SettingsBottomSheet(
                     onClick = { onVideoQualityChange(SettingsDataStore.QUALITY_1080P) },
                     label = { Text("1080P") },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary
+                        selectedContainerColor = BrandSelected
                     )
                 )
             }

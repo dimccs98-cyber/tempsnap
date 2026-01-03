@@ -34,6 +34,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -70,7 +71,6 @@ fun CameraScreen(
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     var recording by remember { mutableStateOf<Recording?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
-    var previewView by remember { mutableStateOf<PreviewView?>(null) }
     
     val permissions = buildList {
         add(Manifest.permission.CAMERA)
@@ -102,45 +102,6 @@ fun CameraScreen(
         }
     }
     
-    // 绑定相机
-    fun bindCamera() {
-        val provider = cameraProvider ?: return
-        val preview = Preview.Builder().build()
-        
-        val cameraSelector = if (lensFacing == 0) {
-            CameraSelector.DEFAULT_BACK_CAMERA
-        } else {
-            CameraSelector.DEFAULT_FRONT_CAMERA
-        }
-        
-        imageCapture = ImageCapture.Builder()
-            .setFlashMode(flashMode)
-            .build()
-        
-        val recorder = Recorder.Builder()
-            .setQualitySelector(viewModel.getQualitySelector())
-            .build()
-        videoCapture = VideoCapture.withOutput(recorder)
-        
-        try {
-            provider.unbindAll()
-            camera = provider.bindToLifecycle(
-                lifecycleOwner,
-                cameraSelector,
-                preview,
-                imageCapture,
-                videoCapture
-            )
-            previewView?.let { preview.setSurfaceProvider(it.surfaceProvider) }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-    
-    LaunchedEffect(cameraProvider, lensFacing, flashMode) {
-        bindCamera()
-    }
-    
     // 更新闪光灯模式
     LaunchedEffect(flashMode) {
         imageCapture?.flashMode = flashMode
@@ -149,6 +110,57 @@ fun CameraScreen(
     if (!permissionState.allPermissionsGranted) {
         PermissionRequest(onRequestPermission = { permissionState.launchMultiplePermissionRequest() })
         return
+    }
+    
+    // 相机是否已加载
+    var isCameraReady by remember { mutableStateOf(false) }
+    var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
+    
+    // 相机绑定函数
+    fun bindCamera(provider: ProcessCameraProvider, previewView: PreviewView, facing: Int) {
+        val preview = Preview.Builder().build()
+        
+        val cameraSelector = if (facing == 0) {
+            CameraSelector.DEFAULT_BACK_CAMERA
+        } else {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        }
+        
+        val newImageCapture = ImageCapture.Builder()
+            .setFlashMode(flashMode)
+            .build()
+        imageCapture = newImageCapture
+        
+        val recorder = Recorder.Builder()
+            .setQualitySelector(viewModel.getQualitySelector())
+            .build()
+        val newVideoCapture = VideoCapture.withOutput(recorder)
+        videoCapture = newVideoCapture
+        
+        try {
+            provider.unbindAll()
+            camera = provider.bindToLifecycle(
+                lifecycleOwner,
+                cameraSelector,
+                preview,
+                newImageCapture,
+                newVideoCapture
+            )
+            preview.setSurfaceProvider(previewView.surfaceProvider)
+            isCameraReady = true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            isCameraReady = true // 即使失败也标记为 ready，避免卡在 loading
+        }
+    }
+    
+    // 切换镜头时重新绑定
+    LaunchedEffect(lensFacing) {
+        val provider = cameraProvider
+        val preview = previewViewRef
+        if (provider != null && preview != null) {
+            bindCamera(provider, preview, lensFacing)
+        }
     }
     
     Box(
@@ -165,12 +177,19 @@ fun CameraScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     scaleType = PreviewView.ScaleType.FILL_CENTER
-                    previewView = this
+                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                    previewViewRef = this
                     
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                     cameraProviderFuture.addListener({
-                        cameraProvider = cameraProviderFuture.get()
-                        bindCamera()
+                        try {
+                            val provider = cameraProviderFuture.get()
+                            cameraProvider = provider
+                            bindCamera(provider, this, lensFacing)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            isCameraReady = true
+                        }
                     }, ContextCompat.getMainExecutor(ctx))
                 }
             },
@@ -186,6 +205,15 @@ fun CameraScreen(
                     }
                 }
         )
+        
+        // Loading 页面 - 相机加载前显示
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !isCameraReady,
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut()
+        ) {
+            LoadingScreen()
+        }
         
         // 顶部区域
         TopBar(
@@ -268,11 +296,29 @@ private fun TopBar(
                 imageVector = when (flashMode) {
                     ImageCapture.FLASH_MODE_ON -> Icons.Default.FlashOn
                     ImageCapture.FLASH_MODE_OFF -> Icons.Default.FlashOff
-                    else -> Icons.Default.FlashlightOn
+                    else -> Icons.Default.FlashOn // AUTO 模式也用闪电图标
                 },
-                contentDescription = "闪光灯",
-                tint = Color.White
+                contentDescription = when (flashMode) {
+                    ImageCapture.FLASH_MODE_ON -> "闪光灯开启"
+                    ImageCapture.FLASH_MODE_OFF -> "闪光灯关闭"
+                    else -> "闪光灯自动"
+                },
+                tint = when (flashMode) {
+                    ImageCapture.FLASH_MODE_OFF -> Color.Gray
+                    else -> Color.White
+                }
             )
+            // AUTO 模式显示 "A" 标记
+            if (flashMode == ImageCapture.FLASH_MODE_AUTO) {
+                Text(
+                    text = "A",
+                    color = Color.White,
+                    fontSize = 8.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 4.dp, y = 4.dp)
+                )
+            }
         }
         
         // 录制计时器
@@ -329,13 +375,13 @@ private fun BottomControls(
         ) {
             Text(
                 text = "照片",
-                color = if (!isVideoMode) Color.White else Color.Gray,
+                color = if (!isVideoMode) Color.Red else Color.White,
                 fontSize = 16.sp,
                 modifier = Modifier.clickable { onModeChange(false) }
             )
             Text(
                 text = "视频",
-                color = if (isVideoMode) Color.White else Color.Gray,
+                color = if (isVideoMode) Color.Red else Color.White,
                 fontSize = 16.sp,
                 modifier = Modifier.clickable { onModeChange(true) }
             )
@@ -349,40 +395,48 @@ private fun BottomControls(
         ) {
             // 缩略图入口
             Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.DarkGray)
-                    .clickable(onClick = onThumbnailClick),
+                modifier = Modifier.size(56.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (latestItemUri != null) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(Uri.parse(latestItemUri))
-                            .decoderFactory(VideoFrameDecoder.Factory())
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = "最近拍摄",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.DarkGray)
+                        .clickable(onClick = onThumbnailClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (latestItemUri != null) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(Uri.parse(latestItemUri))
+                                .decoderFactory(VideoFrameDecoder.Factory())
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = "最近拍摄",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
                 
-                // 角标
+                // 角标（在外层，不受裁剪）
                 if (itemCount > 0) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .offset(x = 4.dp, y = (-4).dp)
-                            .size(20.dp)
-                            .background(Color.Red, CircleShape),
+                            .offset(x = 6.dp, y = (-6).dp)
+                            .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
+                            .background(Color.Red, CircleShape)
+                            .padding(horizontal = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = if (itemCount > 99) "99+" else itemCount.toString(),
                             color = Color.White,
-                            fontSize = 10.sp
+                            fontSize = 10.sp,
+                            lineHeight = 10.sp,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -433,7 +487,7 @@ private fun ShutterButton(
         modifier = Modifier
             .size(72.dp)
             .border(3.dp, Color.White, CircleShape)
-            .padding(3.dp)
+            .padding(5.dp)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -550,4 +604,92 @@ private fun startVideoRecording(
         }
     
     onRecordingStarted(recording)
+}
+
+@Composable
+private fun LoadingScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(32.dp)
+        ) {
+            // App 名称
+            Text(
+                text = "TempSnap",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 副标题
+            Text(
+                text = "Ephemeral Camera",
+                color = Color.Gray,
+                fontSize = 16.sp
+            )
+            
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            // 功能介绍
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                FeatureItem(
+                    icon = Icons.Default.PhotoCamera,
+                    text = "Capture temporary photos & videos"
+                )
+                FeatureItem(
+                    icon = Icons.Default.Timer,
+                    text = "Auto-delete after set time"
+                )
+                FeatureItem(
+                    icon = Icons.Default.Lock,
+                    text = "All data stored locally for privacy"
+                )
+                FeatureItem(
+                    icon = Icons.Default.CleaningServices,
+                    text = "Keep your gallery clutter-free"
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            // 加载指示器
+            CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FeatureItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.7f),
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = text,
+            color = Color.White.copy(alpha = 0.8f),
+            fontSize = 14.sp
+        )
+    }
 }
