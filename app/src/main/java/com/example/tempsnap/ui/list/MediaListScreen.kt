@@ -30,7 +30,10 @@ import coil.request.ImageRequest
 import com.example.tempsnap.data.MediaItem
 import com.example.tempsnap.data.SettingsDataStore
 import com.example.tempsnap.ui.theme.BrandPrimary
-import com.example.tempsnap.ui.theme.BrandSelected
+import com.example.tempsnap.ui.theme.BrandSecondary
+import com.example.tempsnap.ui.theme.BrandBackground
+import com.example.tempsnap.ui.theme.BrandSurface
+import com.example.tempsnap.ui.theme.BrandTextSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,46 +52,41 @@ fun MediaListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("待清理清单") },
+                title = { Text("Pending Cleanup", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Default.Settings, "设置")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Black,
+                    containerColor = BrandBackground,
                     titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    navigationIconContentColor = Color.White
                 )
             )
         },
         bottomBar = {
             if (selectedItems.isNotEmpty()) {
                 BottomAppBar(
-                    containerColor = Color.Black
+                    containerColor = BrandSurface
                 ) {
                     Spacer(Modifier.weight(1f))
                     Button(
                         onClick = { viewModel.keepSelectedItems() },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = BrandPrimary
-                        )
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Default.Save, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("永久保留 (${selectedItems.size})")
+                        Text("Keep Forever (${selectedItems.size})")
                     }
                     Spacer(Modifier.weight(1f))
                 }
             }
         },
-        containerColor = Color.Black
+        containerColor = BrandBackground
     ) { padding ->
         if (items.isEmpty()) {
             Box(
@@ -97,11 +95,21 @@ fun MediaListScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "暂无待清理的照片或视频",
-                    color = Color.Gray,
-                    textAlign = TextAlign.Center
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.PhotoLibrary,
+                        contentDescription = null,
+                        tint = BrandTextSecondary,
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = "No pending items",
+                        color = BrandTextSecondary,
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         } else {
             LazyVerticalGrid(
@@ -109,9 +117,9 @@ fun MediaListScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentPadding = PaddingValues(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                contentPadding = PaddingValues(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(items, key = { it.id }) { item ->
                     MediaItemCard(
@@ -150,10 +158,10 @@ private fun MediaItemCard(
     Box(
         modifier = Modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color.DarkGray)
+            .clip(RoundedCornerShape(8.dp))
+            .background(BrandSurface)
             .then(
-                if (isSelected) Modifier.border(3.dp, BrandPrimary, RoundedCornerShape(4.dp))
+                if (isSelected) Modifier.border(3.dp, BrandPrimary, RoundedCornerShape(8.dp))
                 else Modifier
             )
             .clickable(onClick = onClick)
@@ -251,86 +259,117 @@ private fun SettingsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF1C1C1E)
+        containerColor = BrandSurface,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .size(40.dp, 4.dp)
+                    .background(BrandTextSecondary.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
+            )
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
                 .navigationBarsPadding()
         ) {
             Text(
-                text = "设置",
+                text = "Settings",
                 style = MaterialTheme.typography.titleLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 color = Color.White,
-                modifier = Modifier.padding(bottom = 24.dp)
+                modifier = Modifier.padding(bottom = 28.dp)
             )
             
             // 保留时长
-            Text("保留时长", color = Color.Gray, fontSize = 14.sp)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Retention Period", color = BrandTextSecondary, fontSize = 14.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf(1, 3, 7, 30).forEach { days ->
                     FilterChip(
                         selected = retentionDays == days,
                         onClick = { onRetentionDaysChange(days) },
-                        label = { Text("${days}天") },
+                        label = { Text("${days}d") },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = BrandSelected
-                        )
+                            containerColor = BrandBackground,
+                            labelColor = BrandTextSecondary,
+                            selectedContainerColor = BrandPrimary,
+                            selectedLabelColor = Color.White
+                        ),
+                        border = null
                     )
                 }
             }
             Text(
-                "修改后仅对新拍摄内容生效",
-                color = Color.Gray,
+                "Only applies to new captures",
+                color = BrandTextSecondary.copy(alpha = 0.7f),
                 fontSize = 12.sp,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier.padding(top = 6.dp)
             )
             
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(28.dp))
             
             // 视频画质
-            Text("视频画质", color = Color.Gray, fontSize = 14.sp)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Video Quality", color = BrandTextSecondary, fontSize = 14.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 FilterChip(
                     selected = videoQuality == SettingsDataStore.QUALITY_720P,
                     onClick = { onVideoQualityChange(SettingsDataStore.QUALITY_720P) },
-                    label = { Text("720P (省空间)") },
+                    label = { Text("720P") },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = BrandSelected
-                    )
+                        containerColor = BrandBackground,
+                        labelColor = BrandTextSecondary,
+                        selectedContainerColor = BrandPrimary,
+                        selectedLabelColor = Color.White
+                    ),
+                    border = null
                 )
                 FilterChip(
                     selected = videoQuality == SettingsDataStore.QUALITY_1080P,
                     onClick = { onVideoQualityChange(SettingsDataStore.QUALITY_1080P) },
                     label = { Text("1080P") },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = BrandSelected
-                    )
+                        containerColor = BrandBackground,
+                        labelColor = BrandTextSecondary,
+                        selectedContainerColor = BrandPrimary,
+                        selectedLabelColor = Color.White
+                    ),
+                    border = null
                 )
             }
             
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(28.dp))
             
             // 清理通知
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(BrandBackground, RoundedCornerShape(12.dp))
+                    .padding(16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("清理通知", color = Color.White)
-                    Text("删除前发送系统通知", color = Color.Gray, fontSize = 12.sp)
+                    Text("Cleanup Notification", color = Color.White, fontSize = 15.sp)
+                    Text("Notify before deletion", color = BrandTextSecondary, fontSize = 12.sp)
                 }
                 Switch(
                     checked = cleanupNotification,
-                    onCheckedChange = onCleanupNotificationChange
+                    onCheckedChange = onCleanupNotificationChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = BrandPrimary,
+                        uncheckedThumbColor = BrandTextSecondary,
+                        uncheckedTrackColor = BrandBackground
+                    )
                 )
             }
             
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(16.dp))
         }
     }
 }

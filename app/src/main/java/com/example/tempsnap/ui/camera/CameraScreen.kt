@@ -43,12 +43,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
+import com.example.tempsnap.ui.theme.BrandPrimary
+import com.example.tempsnap.ui.theme.BrandSecondary
+import com.example.tempsnap.ui.theme.BrandBackground
+import com.example.tempsnap.ui.theme.BrandSurface
+import com.example.tempsnap.ui.theme.BrandTextSecondary
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.coroutines.delay
 import java.util.concurrent.Executor
 
-@OptIn(ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun CameraScreen(
     viewModel: CameraViewModel = viewModel(),
@@ -65,12 +70,16 @@ fun CameraScreen(
     val lensFacing by viewModel.lensFacing.collectAsState()
     val latestItem by viewModel.latestItem.collectAsState()
     val itemCount by viewModel.itemCount.collectAsState()
+    val retentionDays by viewModel.retentionDays.collectAsState()
+    val videoQuality by viewModel.videoQuality.collectAsState()
+    val cleanupNotification by viewModel.cleanupNotification.collectAsState()
     
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     var recording by remember { mutableStateOf<Recording?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
     
     val permissions = buildList {
         add(Manifest.permission.CAMERA)
@@ -150,7 +159,7 @@ fun CameraScreen(
             isCameraReady = true
         } catch (e: Exception) {
             e.printStackTrace()
-            isCameraReady = true // 即使失败也标记为 ready，避免卡在 loading
+            isCameraReady = true
         }
     }
     
@@ -160,6 +169,28 @@ fun CameraScreen(
         val preview = previewViewRef
         if (provider != null && preview != null) {
             bindCamera(provider, preview, lensFacing)
+        }
+    }
+    
+    // 处理生命周期 - 返回时重新绑定相机
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val provider = cameraProvider
+                val preview = previewViewRef
+                if (provider != null && preview != null && !isCameraReady) {
+                    bindCamera(provider, preview, lensFacing)
+                } else if (provider != null && preview != null) {
+                    // 强制重新绑定
+                    bindCamera(provider, preview, lensFacing)
+                }
+            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
+                isCameraReady = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
     
@@ -220,7 +251,9 @@ fun CameraScreen(
             isRecording = isRecording,
             recordingDuration = recordingDuration,
             flashMode = flashMode,
-            onFlashClick = { viewModel.toggleFlash() }
+            lensFacing = lensFacing,
+            onFlashClick = { viewModel.toggleFlash() },
+            onSettingsClick = { showSettings = true }
         )
         
         // 底部操作区
@@ -272,6 +305,19 @@ fun CameraScreen(
             modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
+    
+    // 设置面板
+    if (showSettings) {
+        SettingsBottomSheet(
+            retentionDays = retentionDays,
+            videoQuality = videoQuality,
+            cleanupNotification = cleanupNotification,
+            onRetentionDaysChange = { viewModel.setRetentionDays(it) },
+            onVideoQualityChange = { viewModel.setVideoQuality(it) },
+            onCleanupNotificationChange = { viewModel.setCleanupNotification(it) },
+            onDismiss = { showSettings = false }
+        )
+    }
 }
 
 @Composable
@@ -279,7 +325,9 @@ private fun TopBar(
     isRecording: Boolean,
     recordingDuration: Long,
     flashMode: Int,
-    onFlashClick: () -> Unit
+    lensFacing: Int,
+    onFlashClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -287,38 +335,51 @@ private fun TopBar(
             .statusBarsPadding()
             .padding(16.dp)
     ) {
-        // 闪光灯按钮
+        // 闪光灯按钮 - 仅后置摄像头显示
+        if (lensFacing == 0) {
+            IconButton(
+                onClick = onFlashClick,
+                modifier = Modifier.align(Alignment.CenterStart)
+            ) {
+                Icon(
+                    imageVector = when (flashMode) {
+                        ImageCapture.FLASH_MODE_ON -> Icons.Default.FlashOn
+                        ImageCapture.FLASH_MODE_OFF -> Icons.Default.FlashOff
+                        else -> Icons.Default.FlashOn
+                    },
+                    contentDescription = when (flashMode) {
+                        ImageCapture.FLASH_MODE_ON -> "Flash On"
+                        ImageCapture.FLASH_MODE_OFF -> "Flash Off"
+                        else -> "Flash Auto"
+                    },
+                    tint = when (flashMode) {
+                        ImageCapture.FLASH_MODE_OFF -> Color.Gray
+                        else -> Color.White
+                    }
+                )
+                if (flashMode == ImageCapture.FLASH_MODE_AUTO) {
+                    Text(
+                        text = "A",
+                        color = Color.White,
+                        fontSize = 8.sp,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset(x = 4.dp, y = 4.dp)
+                    )
+                }
+            }
+        }
+        
+        // 设置按钮 - 右上角
         IconButton(
-            onClick = onFlashClick,
-            modifier = Modifier.align(Alignment.CenterStart)
+            onClick = onSettingsClick,
+            modifier = Modifier.align(Alignment.CenterEnd)
         ) {
             Icon(
-                imageVector = when (flashMode) {
-                    ImageCapture.FLASH_MODE_ON -> Icons.Default.FlashOn
-                    ImageCapture.FLASH_MODE_OFF -> Icons.Default.FlashOff
-                    else -> Icons.Default.FlashOn // AUTO 模式也用闪电图标
-                },
-                contentDescription = when (flashMode) {
-                    ImageCapture.FLASH_MODE_ON -> "闪光灯开启"
-                    ImageCapture.FLASH_MODE_OFF -> "闪光灯关闭"
-                    else -> "闪光灯自动"
-                },
-                tint = when (flashMode) {
-                    ImageCapture.FLASH_MODE_OFF -> Color.Gray
-                    else -> Color.White
-                }
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Settings",
+                tint = Color.White
             )
-            // AUTO 模式显示 "A" 标记
-            if (flashMode == ImageCapture.FLASH_MODE_AUTO) {
-                Text(
-                    text = "A",
-                    color = Color.White,
-                    fontSize = 8.sp,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = 4.dp, y = 4.dp)
-                )
-            }
         }
         
         // 录制计时器
@@ -370,21 +431,37 @@ private fun BottomControls(
     ) {
         // 模式切换栏
         Row(
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.padding(bottom = 24.dp)
         ) {
-            Text(
-                text = "照片",
-                color = if (!isVideoMode) Color.Red else Color.White,
-                fontSize = 16.sp,
-                modifier = Modifier.clickable { onModeChange(false) }
-            )
-            Text(
-                text = "视频",
-                color = if (isVideoMode) Color.Red else Color.White,
-                fontSize = 16.sp,
-                modifier = Modifier.clickable { onModeChange(true) }
-            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (!isVideoMode) BrandSurface else Color.Transparent)
+                    .clickable { onModeChange(false) }
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = "Photo",
+                    color = if (!isVideoMode) BrandPrimary else Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = if (!isVideoMode) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (isVideoMode) BrandSurface else Color.Transparent)
+                    .clickable { onModeChange(true) }
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = "Video",
+                    color = if (isVideoMode) BrandPrimary else Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = if (isVideoMode) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+                )
+            }
         }
         
         // 快门和控制按钮
@@ -401,8 +478,8 @@ private fun BottomControls(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.DarkGray)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(BrandSurface)
                         .clickable(onClick = onThumbnailClick),
                     contentAlignment = Alignment.Center
                 ) {
@@ -413,9 +490,16 @@ private fun BottomControls(
                                 .decoderFactory(VideoFrameDecoder.Factory())
                                 .crossfade(true)
                                 .build(),
-                            contentDescription = "最近拍摄",
+                            contentDescription = "Recent",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.PhotoLibrary,
+                            contentDescription = null,
+                            tint = BrandTextSecondary,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
@@ -427,7 +511,7 @@ private fun BottomControls(
                             .align(Alignment.TopEnd)
                             .offset(x = 6.dp, y = (-6).dp)
                             .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
-                            .background(Color.Red, CircleShape)
+                            .background(BrandSecondary, CircleShape)
                             .padding(horizontal = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -454,11 +538,11 @@ private fun BottomControls(
                 onClick = onSwitchCamera,
                 modifier = Modifier
                     .size(56.dp)
-                    .background(Color.DarkGray.copy(alpha = 0.5f), CircleShape)
+                    .background(BrandSurface, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.FlipCameraAndroid,
-                    contentDescription = "切换镜头",
+                    contentDescription = "Switch Camera",
                     tint = Color.White
                 )
             }
@@ -523,14 +607,29 @@ private fun PermissionRequest(onRequestPermission: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(BrandBackground),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("需要相机和存储权限", color = Color.White)
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = onRequestPermission) {
-                Text("授予权限")
+            Icon(
+                Icons.Default.CameraAlt,
+                contentDescription = null,
+                tint = BrandPrimary,
+                modifier = Modifier.size(64.dp)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                "Camera & Storage Permission Required",
+                color = Color.White,
+                fontSize = 16.sp
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = onRequestPermission,
+                colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Grant Permission", modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             }
         }
     }
@@ -611,7 +710,7 @@ private fun LoadingScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(BrandBackground),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -622,24 +721,25 @@ private fun LoadingScreen() {
             Text(
                 text = "TempSnap",
                 color = Color.White,
-                fontSize = 32.sp,
+                fontSize = 36.sp,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
             )
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             
             // 副标题
             Text(
                 text = "Ephemeral Camera",
-                color = Color.Gray,
-                fontSize = 16.sp
+                color = BrandSecondary,
+                fontSize = 16.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
             )
             
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(56.dp))
             
             // 功能介绍
             Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 FeatureItem(
                     icon = Icons.Default.PhotoCamera,
@@ -659,13 +759,13 @@ private fun LoadingScreen() {
                 )
             }
             
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(56.dp))
             
             // 加载指示器
             CircularProgressIndicator(
-                color = Color.White,
-                strokeWidth = 2.dp,
-                modifier = Modifier.size(24.dp)
+                color = BrandPrimary,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(32.dp)
             )
         }
     }
@@ -678,18 +778,156 @@ private fun FeatureItem(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.7f),
-            modifier = Modifier.size(20.dp)
-        )
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(BrandSurface, RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = BrandPrimary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
         Text(
             text = text,
-            color = Color.White.copy(alpha = 0.8f),
-            fontSize = 14.sp
+            color = Color.White.copy(alpha = 0.9f),
+            fontSize = 15.sp
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsBottomSheet(
+    retentionDays: Int,
+    videoQuality: Int,
+    cleanupNotification: Boolean,
+    onRetentionDaysChange: (Int) -> Unit,
+    onVideoQualityChange: (Int) -> Unit,
+    onCleanupNotificationChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = BrandSurface,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .size(40.dp, 4.dp)
+                    .background(BrandTextSecondary.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+                .navigationBarsPadding()
+        ) {
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 28.dp)
+            )
+            
+            // 保留时长
+            Text("Retention Period", color = BrandTextSecondary, fontSize = 14.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(1, 3, 7, 30).forEach { days ->
+                    FilterChip(
+                        selected = retentionDays == days,
+                        onClick = { onRetentionDaysChange(days) },
+                        label = { Text("${days}d") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = BrandBackground,
+                            labelColor = BrandTextSecondary,
+                            selectedContainerColor = BrandPrimary,
+                            selectedLabelColor = Color.White
+                        ),
+                        border = null
+                    )
+                }
+            }
+            Text(
+                "Only applies to new captures",
+                color = BrandTextSecondary.copy(alpha = 0.7f),
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            
+            Spacer(Modifier.height(28.dp))
+            
+            // 视频画质
+            Text("Video Quality", color = BrandTextSecondary, fontSize = 14.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilterChip(
+                    selected = videoQuality == com.example.tempsnap.data.SettingsDataStore.QUALITY_720P,
+                    onClick = { onVideoQualityChange(com.example.tempsnap.data.SettingsDataStore.QUALITY_720P) },
+                    label = { Text("720P") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = BrandBackground,
+                        labelColor = BrandTextSecondary,
+                        selectedContainerColor = BrandPrimary,
+                        selectedLabelColor = Color.White
+                    ),
+                    border = null
+                )
+                FilterChip(
+                    selected = videoQuality == com.example.tempsnap.data.SettingsDataStore.QUALITY_1080P,
+                    onClick = { onVideoQualityChange(com.example.tempsnap.data.SettingsDataStore.QUALITY_1080P) },
+                    label = { Text("1080P") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = BrandBackground,
+                        labelColor = BrandTextSecondary,
+                        selectedContainerColor = BrandPrimary,
+                        selectedLabelColor = Color.White
+                    ),
+                    border = null
+                )
+            }
+            
+            Spacer(Modifier.height(28.dp))
+            
+            // 清理通知
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(BrandBackground, RoundedCornerShape(12.dp))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Cleanup Notification", color = Color.White, fontSize = 15.sp)
+                    Text("Notify before deletion", color = BrandTextSecondary, fontSize = 12.sp)
+                }
+                Switch(
+                    checked = cleanupNotification,
+                    onCheckedChange = onCleanupNotificationChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = BrandPrimary,
+                        uncheckedThumbColor = BrandTextSecondary,
+                        uncheckedTrackColor = BrandBackground
+                    )
+                )
+            }
+            
+            Spacer(Modifier.height(16.dp))
+        }
     }
 }

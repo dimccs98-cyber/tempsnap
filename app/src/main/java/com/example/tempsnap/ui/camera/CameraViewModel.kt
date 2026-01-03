@@ -54,6 +54,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val videoQuality: StateFlow<Int> = settings.videoQuality
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsDataStore.QUALITY_1080P)
     
+    val cleanupNotification: StateFlow<Boolean> = settings.cleanupNotification
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    
     init {
         viewModelScope.launch {
             settings.lastLensFacing.collect { _lensFacing.value = it }
@@ -140,5 +143,17 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             Quality.FHD
         }
         return QualitySelector.from(quality)
+    }
+    
+    fun setRetentionDays(days: Int) {
+        viewModelScope.launch { settings.setRetentionDays(days) }
+    }
+    
+    fun setVideoQuality(quality: Int) {
+        viewModelScope.launch { settings.setVideoQuality(quality) }
+    }
+    
+    fun setCleanupNotification(enabled: Boolean) {
+        viewModelScope.launch { settings.setCleanupNotification(enabled) }
     }
 }
